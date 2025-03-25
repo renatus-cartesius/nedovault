@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/renatus-cartesius/nedovault/api";
+
+message LogPass {
+  string login = 1;
+  string password = 2;
+}
+
+message Text {
+  string data = 1;
+}
+
+message Secret {
+  oneof secret {
+    LogPass log_pass = 1;
+    Text text = 2;
+  }
+}
+
+message AddSecretRequest {
+  string name = 1;
+  Secret secret = 2;
+}
+
+message ListSecretsResponse {
+  map<string, Secret> secrets = 1;
+}
+
+service NedoVault {
+  rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
+  rpc ListSecrets(google.protobuf.Empty) returns (ListSecretsResponse) {}
+}
