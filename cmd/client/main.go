@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 )
 
@@ -43,7 +42,7 @@ func main() {
 		"adding log pass",
 	)
 	_, err = client.AddSecret(ctx, &api.AddSecretRequest{
-		Name: fmt.Sprintf("%s-%s", "logpass", uuid.NewString()),
+		Key: []byte(fmt.Sprintf("%s-%s", "logpass", uuid.NewString())),
 		Secret: &api.Secret{
 			Secret: &api.Secret_LogPass{
 				LogPass: &api.LogPass{
@@ -59,7 +58,7 @@ func main() {
 		"adding simple text",
 	)
 	_, err = client.AddSecret(ctx, &api.AddSecretRequest{
-		Name: fmt.Sprintf("%s-%s", "text", uuid.NewString()),
+		Key: []byte(fmt.Sprintf("%s-%s", "text", uuid.NewString())),
 		Secret: &api.Secret{
 			Secret: &api.Secret_Text{
 				Text: &api.Text{
@@ -77,7 +76,9 @@ func main() {
 		)
 	}
 
-	res, err := client.ListSecrets(ctx, &emptypb.Empty{})
+	secretsMeta, err := client.ListSecretsMeta(ctx, &api.ListSecretsMetaRequest{
+		Username: []byte("admin"),
+	})
 	if err != nil {
 		logger.Log.Error(
 			"error on listing secrets",
@@ -85,5 +86,20 @@ func main() {
 		)
 	}
 
-	fmt.Println(res)
+	for _, s := range secretsMeta.SecretsMeta {
+		fmt.Println(s.Timestamp, s.Type, string(s.Key))
+	}
+
+	logger.Log.Info(
+		"getting specific secret",
+	)
+
+	key := []byte("logpass-af3b1dcf-53c4-405f-9a5b-50953daf036d")
+
+	getSecretResponse, err := client.GetSecret(ctx, &api.GetSecretRequest{
+		Key: key,
+	})
+
+	fmt.Println("Secret meta:", getSecretResponse.SecretMeta)
+	fmt.Println("Secret data:", getSecretResponse.Secret)
 }

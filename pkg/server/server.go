@@ -2,38 +2,84 @@ package server
 
 import (
 	"context"
+	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+type Storage interface {
+	AddSecret(ctx context.Context, username []byte, in *api.AddSecretRequest) error
+	GetSecret(ctx context.Context, username, key []byte) (*api.Secret, *api.SecretMeta, error)
+	ListSecretsMeta(ctx context.Context, username []byte) ([]*api.SecretMeta, error)
+}
+
 type Server struct {
 	api.UnimplementedNedoVaultServer
 
-	secrets map[string]*api.Secret
+	storage Storage
 }
 
-func NewServer() *Server {
+func NewServer(storage Storage) *Server {
 	return &Server{
-		secrets: make(map[string]*api.Secret),
+		storage: storage,
 	}
 }
 
-func (s Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*emptypb.Empty, error) {
+func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (*api.GetSecretResponse, error) {
+	username := []byte("admin")
 
-	if _, ok := s.secrets[in.Name]; ok {
-		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Name)
+	secret, secretMeta, err := s.storage.GetSecret(ctx, username, request.GetKey())
+	if err != nil {
+		logger.Log.Error(
+			"error getting secret",
+			zap.Error(err),
+		)
+		return nil, status.Errorf(codes.Internal, "error getting secret data")
 	}
 
-	s.secrets[in.Name] = in.Secret
+	response := &api.GetSecretResponse{
+		Secret:     secret,
+		SecretMeta: secretMeta,
+	}
+
+	return response, nil
+}
+
+func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*emptypb.Empty, error) {
+
+	logger.Log.Info(
+		"adding secret",
+	)
+
+	if err := s.storage.AddSecret(ctx, []byte("admin"), in); err != nil {
+		logger.Log.Error(
+			"error when adding secret",
+			zap.Error(err),
+		)
+		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Key)
+	}
 
 	return &emptypb.Empty{}, nil
 }
 
-func (s Server) ListSecrets(ctx context.Context, in *emptypb.Empty) (*api.ListSecretsResponse, error) {
+func (s *Server) ListSecretsMeta(ctx context.Context, request *api.ListSecretsMetaRequest) (*api.ListSecretsMetaResponse, error) {
 
-	return &api.ListSecretsResponse{
-		Secrets: s.secrets,
-	}, nil
+	logger.Log.Debug(
+		"listing secrets metadata",
+		zap.String("username", string(request.Username)),
+	)
+
+	meta, err := s.storage.ListSecretsMeta(ctx, request.Username)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error listing secrets metadata")
+	}
+
+	response := &api.ListSecretsMetaResponse{
+		SecretsMeta: meta,
+	}
+
+	return response, nil
 }

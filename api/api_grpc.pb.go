@@ -20,8 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NedoVault_AddSecret_FullMethodName   = "/api.NedoVault/AddSecret"
-	NedoVault_ListSecrets_FullMethodName = "/api.NedoVault/ListSecrets"
+	NedoVault_AddSecret_FullMethodName       = "/api.NedoVault/AddSecret"
+	NedoVault_ListSecretsMeta_FullMethodName = "/api.NedoVault/ListSecretsMeta"
+	NedoVault_GetSecret_FullMethodName       = "/api.NedoVault/GetSecret"
 )
 
 // NedoVaultClient is the client API for NedoVault service.
@@ -29,7 +30,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NedoVaultClient interface {
 	AddSecret(ctx context.Context, in *AddSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ListSecrets(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListSecretsResponse, error)
+	ListSecretsMeta(ctx context.Context, in *ListSecretsMetaRequest, opts ...grpc.CallOption) (*ListSecretsMetaResponse, error)
+	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
 }
 
 type nedoVaultClient struct {
@@ -50,10 +52,20 @@ func (c *nedoVaultClient) AddSecret(ctx context.Context, in *AddSecretRequest, o
 	return out, nil
 }
 
-func (c *nedoVaultClient) ListSecrets(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListSecretsResponse, error) {
+func (c *nedoVaultClient) ListSecretsMeta(ctx context.Context, in *ListSecretsMetaRequest, opts ...grpc.CallOption) (*ListSecretsMetaResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListSecretsResponse)
-	err := c.cc.Invoke(ctx, NedoVault_ListSecrets_FullMethodName, in, out, cOpts...)
+	out := new(ListSecretsMetaResponse)
+	err := c.cc.Invoke(ctx, NedoVault_ListSecretsMeta_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nedoVaultClient) GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSecretResponse)
+	err := c.cc.Invoke(ctx, NedoVault_GetSecret_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +77,8 @@ func (c *nedoVaultClient) ListSecrets(ctx context.Context, in *emptypb.Empty, op
 // for forward compatibility.
 type NedoVaultServer interface {
 	AddSecret(context.Context, *AddSecretRequest) (*emptypb.Empty, error)
-	ListSecrets(context.Context, *emptypb.Empty) (*ListSecretsResponse, error)
+	ListSecretsMeta(context.Context, *ListSecretsMetaRequest) (*ListSecretsMetaResponse, error)
+	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
 	mustEmbedUnimplementedNedoVaultServer()
 }
 
@@ -79,8 +92,11 @@ type UnimplementedNedoVaultServer struct{}
 func (UnimplementedNedoVaultServer) AddSecret(context.Context, *AddSecretRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddSecret not implemented")
 }
-func (UnimplementedNedoVaultServer) ListSecrets(context.Context, *emptypb.Empty) (*ListSecretsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListSecrets not implemented")
+func (UnimplementedNedoVaultServer) ListSecretsMeta(context.Context, *ListSecretsMetaRequest) (*ListSecretsMetaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSecretsMeta not implemented")
+}
+func (UnimplementedNedoVaultServer) GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSecret not implemented")
 }
 func (UnimplementedNedoVaultServer) mustEmbedUnimplementedNedoVaultServer() {}
 func (UnimplementedNedoVaultServer) testEmbeddedByValue()                   {}
@@ -121,20 +137,38 @@ func _NedoVault_AddSecret_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NedoVault_ListSecrets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+func _NedoVault_ListSecretsMeta_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSecretsMetaRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NedoVaultServer).ListSecrets(ctx, in)
+		return srv.(NedoVaultServer).ListSecretsMeta(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NedoVault_ListSecrets_FullMethodName,
+		FullMethod: NedoVault_ListSecretsMeta_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NedoVaultServer).ListSecrets(ctx, req.(*emptypb.Empty))
+		return srv.(NedoVaultServer).ListSecretsMeta(ctx, req.(*ListSecretsMetaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NedoVault_GetSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NedoVaultServer).GetSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NedoVault_GetSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NedoVaultServer).GetSecret(ctx, req.(*GetSecretRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -151,8 +185,12 @@ var NedoVault_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NedoVault_AddSecret_Handler,
 		},
 		{
-			MethodName: "ListSecrets",
-			Handler:    _NedoVault_ListSecrets_Handler,
+			MethodName: "ListSecretsMeta",
+			Handler:    _NedoVault_ListSecretsMeta_Handler,
+		},
+		{
+			MethodName: "GetSecret",
+			Handler:    _NedoVault_GetSecret_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

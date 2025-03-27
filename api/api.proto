@@ -3,8 +3,14 @@ syntax = "proto3";
 package api;
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/renatus-cartesius/nedovault/api";
+
+enum SecretType {
+  TYPE_LOGPASS = 0;
+  TYPE_TEXT = 1;
+}
 
 message LogPass {
   string login = 1;
@@ -22,16 +28,37 @@ message Secret {
   }
 }
 
-message AddSecretRequest {
-  string name = 1;
-  Secret secret = 2;
+message SecretMeta {
+  bytes key = 1;
+  SecretType type = 2;
+  google.protobuf.Timestamp timestamp = 3;
 }
 
-message ListSecretsResponse {
-  map<string, Secret> secrets = 1;
+message AddSecretRequest {
+  bytes key = 1;
+  SecretType secret_type = 2;
+  Secret secret = 3;
+}
+
+message ListSecretsMetaRequest {
+  bytes username = 1;
+}
+
+message ListSecretsMetaResponse {
+  repeated SecretMeta secrets_meta = 1;
+}
+
+message GetSecretRequest {
+  bytes key = 1;
+}
+
+message GetSecretResponse {
+  Secret secret = 1;
+  SecretMeta secret_meta = 2;
 }
 
 service NedoVault {
   rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
-  rpc ListSecrets(google.protobuf.Empty) returns (ListSecretsResponse) {}
+  rpc ListSecretsMeta(ListSecretsMetaRequest) returns (ListSecretsMetaResponse) {}
+  rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}
 }
