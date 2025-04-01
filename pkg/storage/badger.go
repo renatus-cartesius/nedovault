@@ -73,6 +73,7 @@ func (b *BadgerStorage) AddSecret(ctx context.Context, username []byte, in *api.
 
 		sMetadata := &api.SecretMeta{
 			Key:       in.GetKey(),
+			Name:      in.Name,
 			Timestamp: timestamppb.Now(),
 			Type:      in.GetSecretType(),
 		}

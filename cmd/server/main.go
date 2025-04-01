@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/dgraph-io/badger/v4"
+	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"github.com/renatus-cartesius/nedovault/pkg/server"
@@ -10,6 +13,8 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"sync"
+	"time"
 )
 
 func main() {
@@ -19,6 +24,7 @@ func main() {
 	badgerOpts := badger.DefaultOptions("./.nedovault")
 
 	badgerOpts.EncryptionKey = []byte("verysstrongkeeeeyfromsomeconfigg")
+	badgerOpts.IndexCacheSize = 100 << 20
 
 	db, err := badger.Open(badgerOpts)
 	if err != nil {
@@ -44,6 +50,39 @@ func main() {
 		zap.String("address", address),
 	)
 	grpcServer := grpc.NewServer(opts...)
-	api.RegisterNedoVaultServer(grpcServer, server.NewServer(storage.NewBadgerStorage(db)))
+
+	badgerStorage := storage.NewBadgerStorage(db)
+
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		t := time.NewTicker(5 * time.Second)
+
+		for {
+			select {
+			case <-t.C:
+				logger.Log.Info("adding random secret")
+				badgerStorage.AddSecret(context.Background(), []byte("admin"), &api.AddSecretRequest{
+					Key:        []byte(fmt.Sprintf("random-%s", uuid.NewString())),
+					Name:       []byte("name"),
+					SecretType: api.SecretType_TYPE_TEXT,
+					Secret: &api.Secret{
+						Secret: &api.Secret_Text{
+							Text: &api.Text{
+								Data: "Some random text!",
+							},
+						},
+					},
+				})
+			}
+		}
+
+	}()
+
+	api.RegisterNedoVaultServer(grpcServer, server.NewServer(badgerStorage))
 	grpcServer.Serve(lis)
+	wg.Wait()
 }

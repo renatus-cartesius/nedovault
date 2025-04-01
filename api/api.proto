@@ -30,14 +30,16 @@ message Secret {
 
 message SecretMeta {
   bytes key = 1;
-  SecretType type = 2;
+  bytes name = 2;
   google.protobuf.Timestamp timestamp = 3;
+  SecretType type = 4;
 }
 
 message AddSecretRequest {
   bytes key = 1;
-  SecretType secret_type = 2;
-  Secret secret = 3;
+  bytes name = 2;
+  SecretType secret_type = 3;
+  Secret secret = 4;
 }
 
 message ListSecretsMetaRequest {
@@ -60,5 +62,6 @@ message GetSecretResponse {
 service NedoVault {
   rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
   rpc ListSecretsMeta(ListSecretsMetaRequest) returns (ListSecretsMetaResponse) {}
+  rpc ListSecretsMetaStream(ListSecretsMetaRequest) returns (stream ListSecretsMetaResponse) {}
   rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}
 }

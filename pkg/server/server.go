@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"errors"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"time"
 )
 
 type Storage interface {
@@ -28,11 +32,44 @@ func NewServer(storage Storage) *Server {
 	}
 }
 
+func (s *Server) ListSecretsMetaStream(request *api.ListSecretsMetaRequest, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
+	t := time.NewTicker(time.Second)
+
+	for {
+
+		select {
+		case <-t.C:
+			logger.Log.Info("sending metadata to client")
+			meta, err := s.storage.ListSecretsMeta(context.Background(), request.Username)
+			if err != nil {
+				return status.Errorf(codes.Internal, "error listing secrets metadata")
+			}
+
+			response := &api.ListSecretsMetaResponse{
+				SecretsMeta: meta,
+			}
+
+			g.Send(response)
+		}
+
+	}
+}
+
 func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (*api.GetSecretResponse, error) {
 	username := []byte("admin")
 
 	secret, secretMeta, err := s.storage.GetSecret(ctx, username, request.GetKey())
 	if err != nil {
+
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			logger.Log.Debug(
+				"requested unknown key",
+				zap.String("key", string(request.Key)),
+			)
+
+			return nil, status.Errorf(codes.Internal, "no such secret")
+		}
+
 		logger.Log.Error(
 			"error getting secret",
 			zap.Error(err),

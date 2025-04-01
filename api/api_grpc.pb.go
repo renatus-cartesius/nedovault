@@ -20,9 +20,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NedoVault_AddSecret_FullMethodName       = "/api.NedoVault/AddSecret"
-	NedoVault_ListSecretsMeta_FullMethodName = "/api.NedoVault/ListSecretsMeta"
-	NedoVault_GetSecret_FullMethodName       = "/api.NedoVault/GetSecret"
+	NedoVault_AddSecret_FullMethodName             = "/api.NedoVault/AddSecret"
+	NedoVault_ListSecretsMeta_FullMethodName       = "/api.NedoVault/ListSecretsMeta"
+	NedoVault_ListSecretsMetaStream_FullMethodName = "/api.NedoVault/ListSecretsMetaStream"
+	NedoVault_GetSecret_FullMethodName             = "/api.NedoVault/GetSecret"
 )
 
 // NedoVaultClient is the client API for NedoVault service.
@@ -31,6 +32,7 @@ const (
 type NedoVaultClient interface {
 	AddSecret(ctx context.Context, in *AddSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListSecretsMeta(ctx context.Context, in *ListSecretsMetaRequest, opts ...grpc.CallOption) (*ListSecretsMetaResponse, error)
+	ListSecretsMetaStream(ctx context.Context, in *ListSecretsMetaRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSecretsMetaResponse], error)
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
 }
 
@@ -62,6 +64,25 @@ func (c *nedoVaultClient) ListSecretsMeta(ctx context.Context, in *ListSecretsMe
 	return out, nil
 }
 
+func (c *nedoVaultClient) ListSecretsMetaStream(ctx context.Context, in *ListSecretsMetaRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSecretsMetaResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NedoVault_ServiceDesc.Streams[0], NedoVault_ListSecretsMetaStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListSecretsMetaRequest, ListSecretsMetaResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NedoVault_ListSecretsMetaStreamClient = grpc.ServerStreamingClient[ListSecretsMetaResponse]
+
 func (c *nedoVaultClient) GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetSecretResponse)
@@ -78,6 +99,7 @@ func (c *nedoVaultClient) GetSecret(ctx context.Context, in *GetSecretRequest, o
 type NedoVaultServer interface {
 	AddSecret(context.Context, *AddSecretRequest) (*emptypb.Empty, error)
 	ListSecretsMeta(context.Context, *ListSecretsMetaRequest) (*ListSecretsMetaResponse, error)
+	ListSecretsMetaStream(*ListSecretsMetaRequest, grpc.ServerStreamingServer[ListSecretsMetaResponse]) error
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
 	mustEmbedUnimplementedNedoVaultServer()
 }
@@ -94,6 +116,9 @@ func (UnimplementedNedoVaultServer) AddSecret(context.Context, *AddSecretRequest
 }
 func (UnimplementedNedoVaultServer) ListSecretsMeta(context.Context, *ListSecretsMetaRequest) (*ListSecretsMetaResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListSecretsMeta not implemented")
+}
+func (UnimplementedNedoVaultServer) ListSecretsMetaStream(*ListSecretsMetaRequest, grpc.ServerStreamingServer[ListSecretsMetaResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ListSecretsMetaStream not implemented")
 }
 func (UnimplementedNedoVaultServer) GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSecret not implemented")
@@ -155,6 +180,17 @@ func _NedoVault_ListSecretsMeta_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NedoVault_ListSecretsMetaStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListSecretsMetaRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NedoVaultServer).ListSecretsMetaStream(m, &grpc.GenericServerStream[ListSecretsMetaRequest, ListSecretsMetaResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NedoVault_ListSecretsMetaStreamServer = grpc.ServerStreamingServer[ListSecretsMetaResponse]
+
 func _NedoVault_GetSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSecretRequest)
 	if err := dec(in); err != nil {
@@ -193,6 +229,12 @@ var NedoVault_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NedoVault_GetSecret_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ListSecretsMetaStream",
+			Handler:       _NedoVault_ListSecretsMetaStream_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "api/api.proto",
 }
