@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/dgraph-io/badger/v4"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
+	"github.com/renatus-cartesius/nedovault/internal/auth"
 	"github.com/renatus-cartesius/nedovault/pkg/server"
 	"github.com/renatus-cartesius/nedovault/pkg/storage"
 	"go.uber.org/zap"
@@ -32,9 +34,17 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := logger.Initialize("INFO"); err != nil {
+	if err = logger.Initialize("INFO"); err != nil {
 		log.Fatalln(err)
 	}
+
+	badgerStorage := storage.NewBadgerStorage(db)
+	localAuth := auth.NewLocalAuth(
+		[]byte("d6b32087c4b1f7c8b88c945234d54cfa5aa73d4b14e5e7a778448d515db00028b20db"), // TODO: store key in the storage
+		time.Hour*24*30,
+		badgerStorage,
+		jwt.SigningMethodHS256,
+	)
 
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
@@ -43,7 +53,9 @@ func main() {
 			zap.Error(err),
 		)
 	}
-	var opts []grpc.ServerOption
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(server.NewAuthUnaryInterceptor(localAuth)),
+	}
 
 	logger.Log.Info(
 		"starting grpc server",
@@ -51,13 +63,13 @@ func main() {
 	)
 	grpcServer := grpc.NewServer(opts...)
 
-	badgerStorage := storage.NewBadgerStorage(db)
-
 	wg := &sync.WaitGroup{}
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
+		return
 
 		t := time.NewTicker(5 * time.Second)
 
@@ -82,7 +94,13 @@ func main() {
 
 	}()
 
-	api.RegisterNedoVaultServer(grpcServer, server.NewServer(badgerStorage))
+	api.RegisterNedoVaultServer(
+		grpcServer,
+		server.NewServer(
+			badgerStorage,
+			localAuth,
+		),
+	)
 	grpcServer.Serve(lis)
 	wg.Wait()
 }

@@ -6,12 +6,18 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
+	"github.com/renatus-cartesius/nedovault/internal/auth"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"time"
+)
+
+var (
+	ErrMetadataParseFail = status.Errorf(codes.Internal, "failed to parse request metadata")
 )
 
 type Storage interface {
@@ -20,19 +26,54 @@ type Storage interface {
 	ListSecretsMeta(ctx context.Context, username []byte) ([]*api.SecretMeta, error)
 }
 
+type Auth interface {
+	Authorize(ctx context.Context, in *api.AuthRequest) (string, error)
+	ParseToken(ctx context.Context, token []byte) (*auth.Claims, error)
+}
+
 type Server struct {
 	api.UnimplementedNedoVaultServer
 
 	storage Storage
+	auth    Auth
 }
 
-func NewServer(storage Storage) *Server {
+func NewServer(storage Storage, auth Auth) *Server {
 	return &Server{
 		storage: storage,
+		auth:    auth,
 	}
 }
 
-func (s *Server) ListSecretsMetaStream(request *api.ListSecretsMetaRequest, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
+func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthResponse, error) {
+	token, err := s.auth.Authorize(ctx, in)
+	if err != nil {
+
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			return nil, status.Errorf(codes.Unauthenticated, "error authorizing")
+		}
+
+		logger.Log.Error(
+			"error when autorizing",
+			zap.Error(err),
+		)
+
+		return nil, status.Errorf(codes.Internal, "something went wrong when authorizing")
+	}
+
+	response := &api.AuthResponse{
+		Token: token,
+	}
+	return response, nil
+}
+
+func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
+	md, ok := metadata.FromIncomingContext(g.Context())
+	if !ok {
+		return ErrMetadataParseFail
+	}
+	username := []byte(md["username"][0])
+
 	t := time.NewTicker(time.Second)
 
 	for {
@@ -40,7 +81,7 @@ func (s *Server) ListSecretsMetaStream(request *api.ListSecretsMetaRequest, g gr
 		select {
 		case <-t.C:
 			logger.Log.Info("sending metadata to client")
-			meta, err := s.storage.ListSecretsMeta(context.Background(), request.Username)
+			meta, err := s.storage.ListSecretsMeta(context.Background(), username)
 			if err != nil {
 				return status.Errorf(codes.Internal, "error listing secrets metadata")
 			}
@@ -56,7 +97,11 @@ func (s *Server) ListSecretsMetaStream(request *api.ListSecretsMetaRequest, g gr
 }
 
 func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (*api.GetSecretResponse, error) {
-	username := []byte("admin")
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, ErrMetadataParseFail
+	}
+	username := []byte(md["username"][0])
 
 	secret, secretMeta, err := s.storage.GetSecret(ctx, username, request.GetKey())
 	if err != nil {
@@ -86,12 +131,17 @@ func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (
 }
 
 func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*emptypb.Empty, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, ErrMetadataParseFail
+	}
+	username := []byte(md["username"][0])
 
 	logger.Log.Info(
 		"adding secret",
 	)
 
-	if err := s.storage.AddSecret(ctx, []byte("admin"), in); err != nil {
+	if err := s.storage.AddSecret(ctx, username, in); err != nil {
 		logger.Log.Error(
 			"error when adding secret",
 			zap.Error(err),
@@ -102,14 +152,15 @@ func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*empt
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) ListSecretsMeta(ctx context.Context, request *api.ListSecretsMetaRequest) (*api.ListSecretsMetaResponse, error) {
+func (s *Server) ListSecretsMeta(ctx context.Context, e *emptypb.Empty) (*api.ListSecretsMetaResponse, error) {
+	username := ctx.Value(auth.Username("username")).([]byte)
 
 	logger.Log.Debug(
 		"listing secrets metadata",
-		zap.String("username", string(request.Username)),
+		zap.String("username", string(username)),
 	)
 
-	meta, err := s.storage.ListSecretsMeta(ctx, request.Username)
+	meta, err := s.storage.ListSecretsMeta(ctx, username)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error listing secrets metadata")
 	}

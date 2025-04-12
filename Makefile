@@ -9,3 +9,7 @@ server-run:
 .PHONY: client-run
 client-run:
 	@go run cmd/client/main.go
+
+.PHONY: debugger-run
+debugger-run:
+	@go run cmd/debugger/main.go
