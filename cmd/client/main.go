@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"io"
 	"log"
 	"os"
 	"sync"
@@ -135,28 +134,28 @@ func main() {
 		wg.Done()
 	}()
 
-	metadataStream, err := client.ListSecretsMetaStream(ctx, &api.ListSecretsMetaRequest{
-		Username: []byte("admin"),
-	})
-	wg.Add(1)
-	go func() {
-		for {
-			resp, err := metadataStream.Recv()
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				log.Fatalln("error when waiting messages from server")
-			}
-
-			items = nil
-			for _, sm := range resp.SecretsMeta {
-				items = append(items, &tui.SecretItem{
-					SecretMeta: sm,
-				})
-			}
-		}
-	}()
+	//metadataStream, err := client.ListSecretsMetaStream(ctx, &api.ListSecretsMetaRequest{
+	//	Username: []byte("admin"),
+	//})
+	//wg.Add(1)
+	//go func() {
+	//	for {
+	//		resp, err := metadataStream.Recv()
+	//		if err == io.EOF {
+	//			return
+	//		}
+	//		if err != nil {
+	//			log.Fatalln("error when waiting messages from server")
+	//		}
+	//
+	//		items = nil
+	//		for _, sm := range resp.SecretsMeta {
+	//			items = append(items, &tui.SecretItem{
+	//				SecretMeta: sm,
+	//			})
+	//		}
+	//	}
+	//}()
 
 	time.Sleep(time.Second * 3)
 
