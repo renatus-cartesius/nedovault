@@ -42,10 +42,6 @@ message AddSecretRequest {
   Secret secret = 4;
 }
 
-message ListSecretsMetaRequest {
-  bytes username = 1;
-}
-
 message ListSecretsMetaResponse {
   repeated SecretMeta secrets_meta = 1;
 }
@@ -59,9 +55,20 @@ message GetSecretResponse {
   SecretMeta secret_meta = 2;
 }
 
+// Using both for login and register request
+message AuthRequest {
+  bytes username = 1;
+  bytes password = 2;
+}
+
+message AuthResponse {
+  string token = 1;
+}
+
 service NedoVault {
+  rpc Authorize(AuthRequest) returns (AuthResponse) {}
   rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
-  rpc ListSecretsMeta(ListSecretsMetaRequest) returns (ListSecretsMetaResponse) {}
-  rpc ListSecretsMetaStream(ListSecretsMetaRequest) returns (stream ListSecretsMetaResponse) {}
+  rpc ListSecretsMeta(google.protobuf.Empty) returns (ListSecretsMetaResponse) {}
+  rpc ListSecretsMetaStream(google.protobuf.Empty) returns (stream ListSecretsMetaResponse) {}
   rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}
 }
