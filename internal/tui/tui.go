@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"os"
 	"strings"
 	"sync"
@@ -16,11 +20,12 @@ import (
 )
 
 var (
-	docStyle     = lipgloss.NewStyle().Margin(1, 5)
+	docStyle     = lipgloss.NewStyle().Margin(1, 5).Padding(4, 4, 4, 4)
 	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#dddddd"})
-	loginStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Align(lipgloss.Center)
-	noStyle      = lipgloss.NewStyle()
+	//loginStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Align(lipgloss.Center).Padding(10, 2, 10, 2)
+	loginStyle = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Margin(1, 5).Padding(10, 2, 10, 2)
+	noStyle    = lipgloss.NewStyle()
 )
 
 //type SecretItem struct {
@@ -44,7 +49,9 @@ type loginPage struct {
 }
 
 type model struct {
-	sp list.Model
+	sp             list.Model
+	spItems        []SecretItem
+	selectedSecret *api.Secret
 
 	lp loginPage
 
@@ -102,6 +109,23 @@ func (m model) updateLoginPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lp.inputs[0].SetValue("")
 				m.lp.inputs[1].SetValue("")
 
+				ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
+				listSecretsMetaResponse, err := m.client.ListSecretsMeta(ctx, &emptypb.Empty{})
+				if err != nil {
+					logger.Log.Error(
+						"error on listing secrets",
+						zap.Error(err),
+					)
+				}
+
+				var secrets []list.Item
+
+				for _, sm := range listSecretsMetaResponse.SecretsMeta {
+					secrets = append(secrets, &SecretItem{sm})
+				}
+
+				m.sp.SetItems(secrets)
+
 				m.isLoggedIn = true
 			}
 
@@ -146,14 +170,33 @@ func (m model) updateLoginPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	ctx := context.Background()
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+
+		s := msg.String()
+		switch s {
+		case "ctrl+c":
 			return m, tea.Quit
-		}
-		if msg.String() == "ctrl+t" {
+		case "ctrl+l":
 			m.isLoggedIn = !m.isLoggedIn
+		case "enter":
+			item := m.sp.Items()[m.sp.GlobalIndex()].(*SecretItem)
+
+			ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
+			getSecretResponse, err := m.client.GetSecret(ctx, &api.GetSecretRequest{
+				Key: item.SecretMeta.Key,
+			})
+			if err != nil {
+				m.selectedSecret.Secret = nil
+				return m, nil
+			}
+
+			m.selectedSecret = getSecretResponse.Secret
+
 		}
+
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.sp.SetSize(msg.Width-h, msg.Height-v)
@@ -175,6 +218,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+
 	//m.mx.Lock()
 	//defer m.mx.Unlock()
 	if !m.isLoggedIn {
@@ -194,8 +238,24 @@ func (m model) View() string {
 
 		return loginStyle.Render(rend.String())
 	} else {
-		m.sp.Title = "Nedovault v1.0 " + "user: " + string(m.username)
-		return docStyle.Render(m.sp.View())
+
+		var s string
+
+		m.sp.Title = "Nedovault v1.0 "
+
+		if m.username == "" {
+			m.sp.Title += "unauthorized"
+		} else {
+			m.sp.Title = "user: " + string(m.username)
+		}
+
+		s += docStyle.Render(m.sp.View())
+
+		if m.selectedSecret != nil {
+			s += lipgloss.JoinVertical(lipgloss.Right, fmt.Sprintf("%s", m.selectedSecret.String()))
+		}
+
+		return s
 	}
 	//return docStyle.Render(m.sp.View())
 }
@@ -204,7 +264,9 @@ type UI struct {
 	m model
 }
 
-func NewUI(items []list.Item, client api.NedoVaultClient) *UI {
+func NewUI(client api.NedoVaultClient) *UI {
+
+	var items []list.Item
 
 	loginInputs := make([]textinput.Model, 0)
 
@@ -228,9 +290,15 @@ func NewUI(items []list.Item, client api.NedoVaultClient) *UI {
 	ti.Prompt = "Password: "
 	loginInputs = append(loginInputs, ti)
 
+	sp := list.New(items, list.NewDefaultDelegate(), 0, 0)
+	//sp.SetSize(docStyle.GetFrameSize())
+
 	return &UI{
 		m: model{
-			sp:         list.New(items, list.NewDefaultDelegate(), 0, 0),
+			sp: sp,
+			selectedSecret: &api.Secret{
+				Secret: nil,
+			},
 			lp:         loginPage{inputs: loginInputs, current: 0},
 			mx:         &sync.Mutex{},
 			isLoggedIn: false,

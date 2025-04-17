@@ -63,6 +63,12 @@ func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthR
 	response := &api.AuthResponse{
 		Token: token,
 	}
+
+	logger.Log.Info(
+		"user authorized",
+		zap.String("username", string(in.Username)),
+	)
+
 	return response, nil
 }
 
