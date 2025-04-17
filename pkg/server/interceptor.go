@@ -25,9 +25,12 @@ func NewAuthUnaryInterceptor(a Auth) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.Unauthenticated, "metadata is not provided")
 		}
 
-		token := md["token"][0]
+		token, ok := md["token"]
+		if !ok {
+			return nil, status.Errorf(codes.Unauthenticated, "request without token")
+		}
 
-		claims, err := a.ParseToken(ctx, []byte(token))
+		claims, err := a.ParseToken(ctx, []byte(token[0]))
 		if err != nil {
 			if errors.Is(err, auth.ErrInvalidToken) {
 

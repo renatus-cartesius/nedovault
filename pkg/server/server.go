@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"time"
@@ -68,11 +67,7 @@ func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthR
 }
 
 func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
-	md, ok := metadata.FromIncomingContext(g.Context())
-	if !ok {
-		return ErrMetadataParseFail
-	}
-	username := []byte(md["username"][0])
+	username := g.Context().Value(auth.Username("username")).([]byte)
 
 	t := time.NewTicker(time.Second)
 
@@ -97,11 +92,7 @@ func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingS
 }
 
 func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (*api.GetSecretResponse, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, ErrMetadataParseFail
-	}
-	username := []byte(md["username"][0])
+	username := ctx.Value(auth.Username("username")).([]byte)
 
 	secret, secretMeta, err := s.storage.GetSecret(ctx, username, request.GetKey())
 	if err != nil {
@@ -131,11 +122,7 @@ func (s *Server) GetSecret(ctx context.Context, request *api.GetSecretRequest) (
 }
 
 func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*emptypb.Empty, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, ErrMetadataParseFail
-	}
-	username := []byte(md["username"][0])
+	username := ctx.Value(auth.Username("username")).([]byte)
 
 	logger.Log.Info(
 		"adding secret",

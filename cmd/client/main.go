@@ -10,8 +10,9 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
-	"os"
 	"sync"
 	"time"
 )
@@ -41,6 +42,19 @@ func main() {
 	defer conn.Close()
 
 	client := api.NewNedoVaultClient(conn)
+
+	res, err := client.Authorize(ctx, &api.AuthRequest{
+		Username: []byte("admin"),
+		Password: []byte("passs"),
+	})
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	//token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDcwNzM2NTcsImlhdCI6MTc0NDQ4MTY1NywidXNlcm5hbWUiOiJkdW1teSJ9.FUOu-DtS1_azr8YJgpEdygKuSpOQKiPbZAilra3p8xI"
+
+	ctx = metadata.AppendToOutgoingContext(ctx, "token", res.Token)
 
 	//logger.Log.Info(
 	//	"adding log pass",
@@ -80,9 +94,7 @@ func main() {
 		)
 	}
 
-	listSecretsMetaResponse, err := client.ListSecretsMeta(ctx, &api.ListSecretsMetaRequest{
-		Username: []byte("admin"),
-	})
+	listSecretsMetaResponse, err := client.ListSecretsMeta(ctx, &emptypb.Empty{})
 	if err != nil {
 		logger.Log.Error(
 			"error on listing secrets",
@@ -100,22 +112,22 @@ func main() {
 		"getting specific secret",
 	)
 
-	key := []byte("text-769bfb1c-bd4d-4d24-ac2b-db7bd2f0f16c")
-
-	getSecretResponse, err := client.GetSecret(ctx, &api.GetSecretRequest{
-		Key: key,
-	})
-
-	if err != nil {
-		logger.Log.Error(
-			"error getting secret",
-			zap.Error(err),
-		)
-		os.Exit(0)
-	}
-
-	fmt.Println("Secret meta:", getSecretResponse.SecretMeta)
-	fmt.Println("Secret data:", getSecretResponse.Secret)
+	//key := []byte("text-769bfb1c-bd4d-4d24-ac2b-db7bd2f0f16c")
+	//
+	//getSecretResponse, err := client.GetSecret(ctx, &api.GetSecretRequest{
+	//	Key: key,
+	//})
+	//
+	//if err != nil {
+	//	logger.Log.Error(
+	//		"error getting secret",
+	//		zap.Error(err),
+	//	)
+	//	os.Exit(0)
+	//}
+	//
+	//fmt.Println("Secret meta:", getSecretResponse.SecretMeta)
+	//fmt.Println("Secret data:", getSecretResponse.Secret)
 
 	var items []list.Item
 
@@ -126,13 +138,16 @@ func main() {
 	}
 
 	wg := &sync.WaitGroup{}
-	ui := tui.NewUI(items)
+	ui := tui.NewUI(items, client)
 
 	wg.Add(1)
 	go func() {
 		ui.Run()
 		wg.Done()
 	}()
+
+	time.Sleep(3 * time.Second)
+	ui.LoginPage()
 
 	//metadataStream, err := client.ListSecretsMetaStream(ctx, &api.ListSecretsMetaRequest{
 	//	Username: []byte("admin"),
@@ -157,13 +172,13 @@ func main() {
 	//	}
 	//}()
 
-	time.Sleep(time.Second * 3)
-
-	items[0].(*tui.SecretItem).SecretMeta = &api.SecretMeta{
-		Key:  []byte("sdfsdf"),
-		Name: []byte("sdfsdf"),
-		Type: api.SecretType_TYPE_TEXT,
-	}
+	//time.Sleep(time.Second * 3)
+	//
+	//items[0].(*tui.SecretItem).SecretMeta = &api.SecretMeta{
+	//	Key:  []byte("sdfsdf"),
+	//	Name: []byte("sdfsdf"),
+	//	Type: api.SecretType_TYPE_TEXT,
+	//}
 
 	wg.Wait()
 
