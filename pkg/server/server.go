@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type Auth interface {
 type Server struct {
 	api.UnimplementedNedoVaultServer
 
+	cond    *sync.Cond
 	storage Storage
 	auth    Auth
 }
@@ -40,6 +42,7 @@ type Server struct {
 func NewServer(storage Storage, auth Auth) *Server {
 	return &Server{
 		storage: storage,
+		cond:    sync.NewCond(&sync.Mutex{}),
 		auth:    auth,
 	}
 }
@@ -73,15 +76,42 @@ func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthR
 }
 
 func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
-	username := g.Context().Value(auth.Username("username")).([]byte)
+	//username := g.Context().Value(auth.Username("username")).([]byte)
+	username := []byte("admin")
 
-	t := time.NewTicker(time.Second)
+	t := time.NewTicker(time.Second * 4)
+
+	ch := make(chan any)
+	defer close(ch)
+
+	go func() {
+		for {
+			s.cond.L.Lock()
+
+			s.cond.Wait()
+			ch <- struct{}{}
+			s.cond.L.Unlock()
+		}
+	}()
 
 	for {
 
 		select {
+		case <-ch:
+			logger.Log.Info("sending metadata to client by event")
+			meta, err := s.storage.ListSecretsMeta(context.Background(), username)
+			if err != nil {
+				return status.Errorf(codes.Internal, "error listing secrets metadata")
+			}
+
+			response := &api.ListSecretsMetaResponse{
+				SecretsMeta: meta,
+			}
+
+			g.Send(response)
+
 		case <-t.C:
-			logger.Log.Info("sending metadata to client")
+			logger.Log.Info("sending metadata to client by timer")
 			meta, err := s.storage.ListSecretsMeta(context.Background(), username)
 			if err != nil {
 				return status.Errorf(codes.Internal, "error listing secrets metadata")
@@ -141,6 +171,8 @@ func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*empt
 		)
 		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Key)
 	}
+
+	s.cond.Broadcast()
 
 	return &emptypb.Empty{}, nil
 }

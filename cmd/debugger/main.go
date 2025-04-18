@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"go.uber.org/zap"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"io"
 	"log"
 )
 
@@ -52,8 +54,36 @@ func main() {
 
 	ctx = metadata.AppendToOutgoingContext(ctx, "token", res.Token)
 
-	listSecretsMetaResponse, err := client.ListSecretsMeta(ctx, &emptypb.Empty{})
+	_, err = client.AddSecret(ctx, &api.AddSecretRequest{
+		Key: []byte(fmt.Sprintf("%s-%s", "text", uuid.NewString())),
+		Secret: &api.Secret{
+			Secret: &api.Secret_Text{
+				Text: &api.Text{
+					Data: "Hello World!",
+				},
+			},
+		},
+	},
+	)
 
-	fmt.Println(listSecretsMetaResponse)
+	if err != nil {
+		panic(err)
+	}
+	stream, err := client.ListSecretsMetaStream(ctx, &emptypb.Empty{})
+	if err != nil {
+		panic(err)
+	}
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("New message: ", resp.SecretsMeta)
+
+	}
 
 }
