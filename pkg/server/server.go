@@ -97,6 +97,11 @@ func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingS
 	for {
 
 		select {
+		case <-g.Context().Done():
+			logger.Log.Info(
+				"closing metadata stream",
+			)
+			return nil
 		case <-ch:
 			logger.Log.Info("sending metadata to client by event")
 			meta, err := s.storage.ListSecretsMeta(context.Background(), username)
