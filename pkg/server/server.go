@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/dgraph-io/badger/v4"
+	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"github.com/renatus-cartesius/nedovault/internal/auth"
@@ -34,7 +35,7 @@ type Auth interface {
 type Server struct {
 	api.UnimplementedNedoVaultServer
 
-	cond    *sync.Cond
+	smap    *sync.Map
 	storage Storage
 	auth    Auth
 }
@@ -42,7 +43,7 @@ type Server struct {
 func NewServer(storage Storage, auth Auth) *Server {
 	return &Server{
 		storage: storage,
-		cond:    sync.NewCond(&sync.Mutex{}),
+		smap:    &sync.Map{},
 		auth:    auth,
 	}
 }
@@ -79,29 +80,26 @@ func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingS
 	//username := g.Context().Value(auth.Username("username")).([]byte)
 	username := []byte("admin")
 
-	t := time.NewTicker(time.Second * 4)
-
+	streamUuid := uuid.NewString()
 	ch := make(chan any)
-	defer close(ch)
-
-	go func() {
-		for {
-			s.cond.L.Lock()
-
-			s.cond.Wait()
-			ch <- struct{}{}
-			s.cond.L.Unlock()
-		}
+	defer func() {
+		close(ch)
+		s.smap.Delete(streamUuid)
 	}()
+	s.smap.Store(streamUuid, ch)
+
+	ctx := g.Context()
+
+	t := time.NewTicker(time.Second * 4)
 
 	for {
 
 		select {
-		case <-g.Context().Done():
+		case <-ctx.Done():
 			logger.Log.Info(
 				"closing metadata stream",
 			)
-			return nil
+			return ctx.Err()
 		case <-ch:
 			logger.Log.Info("sending metadata to client by event")
 			meta, err := s.storage.ListSecretsMeta(context.Background(), username)
@@ -177,7 +175,10 @@ func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*empt
 		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Key)
 	}
 
-	s.cond.Broadcast()
+	s.smap.Range(func(key, value any) bool {
+		value.(chan any) <- struct{}{}
+		return true
+	})
 
 	return &emptypb.Empty{}, nil
 }
