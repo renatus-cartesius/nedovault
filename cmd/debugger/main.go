@@ -42,8 +42,8 @@ func main() {
 	client := api.NewNedoVaultClient(conn)
 
 	res, err := client.Authorize(ctx, &api.AuthRequest{
-		Username: []byte("admin"),
-		Password: []byte("passs"),
+		Username: []byte("r"),
+		Password: []byte("r"),
 	})
 
 	if err != nil {

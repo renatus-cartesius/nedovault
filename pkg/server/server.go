@@ -78,7 +78,7 @@ func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthR
 
 func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
 	//username := g.Context().Value(auth.Username("username")).([]byte)
-	username := []byte("admin")
+	username := []byte("d")
 
 	streamUuid := uuid.NewString()
 	ch := make(chan any)

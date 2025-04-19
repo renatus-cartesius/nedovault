@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -50,7 +52,6 @@ type loginPage struct {
 
 type model struct {
 	sp             list.Model
-	spItems        []SecretItem
 	selectedSecret *api.Secret
 
 	lp loginPage
@@ -119,12 +120,13 @@ func (m model) updateLoginPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				var secrets []list.Item
-
 				for _, sm := range listSecretsMetaResponse.SecretsMeta {
 					secrets = append(secrets, &SecretItem{sm})
 				}
 
+				m.mx.Lock()
 				m.sp.SetItems(secrets)
+				m.mx.Unlock()
 
 				m.isLoggedIn = true
 			}
@@ -181,6 +183,21 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+l":
 			m.isLoggedIn = !m.isLoggedIn
+		case "a":
+
+			ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
+			_, _ = m.client.AddSecret(ctx, &api.AddSecretRequest{
+				Key: []byte(fmt.Sprintf("%s-%s", "tui", uuid.NewString())),
+				Secret: &api.Secret{
+					Secret: &api.Secret_Text{
+						Text: &api.Text{
+							Data: "Hello World!",
+						},
+					},
+				},
+			},
+			)
+
 		case "enter":
 			item := m.sp.Items()[m.sp.GlobalIndex()].(*SecretItem)
 
@@ -208,6 +225,12 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
+	switch mtype := msg.(type) {
+	case secretsUpdate:
+		m.sp.SetItems(mtype.secrets)
+		return m, nil
+	}
 
 	if !m.isLoggedIn {
 		return m.updateLoginPage(msg)
@@ -249,7 +272,9 @@ func (m model) View() string {
 			m.sp.Title = "user: " + string(m.username)
 		}
 
+		m.mx.Lock()
 		s += docStyle.Render(m.sp.View())
+		m.mx.Unlock()
 
 		if m.selectedSecret != nil {
 			s += lipgloss.JoinVertical(lipgloss.Right, fmt.Sprintf("%s", m.selectedSecret.String()))
@@ -262,6 +287,51 @@ func (m model) View() string {
 
 type UI struct {
 	m model
+}
+
+type secretsUpdate struct {
+	secrets []list.Item
+}
+
+func (u *UI) CheckUpdates(ctx context.Context, wg *sync.WaitGroup, p *tea.Program) {
+	//defer wg.Done()
+
+	stream, err := u.m.client.ListSecretsMetaStream(ctx, &emptypb.Empty{})
+	if err != nil {
+		panic(err)
+	}
+
+	// TOOD: add gracefull shutdown
+	for {
+
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				return
+			}
+
+			if err != nil {
+				logger.Log.Error(
+					"error receiving metadata from server",
+					zap.Error(err),
+				)
+			}
+
+			var secrets []list.Item
+
+			for _, sm := range resp.SecretsMeta {
+				secrets = append(secrets, &SecretItem{sm})
+			}
+
+			p.Send(secretsUpdate{
+				secrets: secrets,
+			})
+		}
+
+	}
 }
 
 func NewUI(client api.NedoVaultClient) *UI {
@@ -311,12 +381,22 @@ func (u *UI) Run() {
 
 	u.m.sp.Title = "Nedovault v1.0"
 
+	wg := &sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	p := tea.NewProgram(u.m, tea.WithAltScreen())
+
+	//wg.Add(1)
+
+	go u.CheckUpdates(ctx, wg, p)
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
+
+	//wg.Wait()
 }
 
 func (u *UI) LoginPage() {
