@@ -31,5 +31,5 @@ func (sv *SecretView) Update(secret *api.Secret) {
 
 func (sv *SecretView) View() string {
 
-	return sv.style.Render(sv.ta.View())
+	return sv.style.Render(sv.Secret.String())
 }

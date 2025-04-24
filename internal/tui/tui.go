@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/brianvoe/gofakeit"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -196,17 +198,36 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 
 			ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
-			_, _ = m.client.AddSecret(ctx, &api.AddSecretRequest{
-				Key: []byte(fmt.Sprintf("%s-%s", "tui", uuid.NewString())),
-				Secret: &api.Secret{
-					Secret: &api.Secret_Text{
-						Text: &api.Text{
-							Data: "Hello World!",
+
+			var addRequest api.AddSecretRequest
+
+			switch rand.Intn(2) {
+			case 0:
+				addRequest = api.AddSecretRequest{
+					Key: []byte(fmt.Sprintf("%s-%s", "text", uuid.NewString())),
+					Secret: &api.Secret{
+						Secret: &api.Secret_Text{
+							Text: &api.Text{
+								Data: gofakeit.HackerPhrase(),
+							},
 						},
 					},
-				},
-			},
-			)
+				}
+			case 1:
+				addRequest = api.AddSecretRequest{
+					Key: []byte(fmt.Sprintf("%s-%s", "logpass", uuid.NewString())),
+					Secret: &api.Secret{
+						Secret: &api.Secret_LogPass{
+							LogPass: &api.LogPass{
+								Login:    gofakeit.Username(),
+								Password: gofakeit.Password(true, true, true, true, false, 12),
+							},
+						},
+					},
+				}
+			}
+
+			_, _ = m.client.AddSecret(ctx, &addRequest)
 
 		case "enter":
 			item := m.sp.Items()[m.sp.GlobalIndex()].(*SecretItem)
