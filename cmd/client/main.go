@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"sync"
-	"time"
 )
 
 func main() {
@@ -38,72 +37,6 @@ func main() {
 
 	client := api.NewNedoVaultClient(conn)
 
-	//res, err := client.Authorize(ctx, &api.AuthRequest{
-	//	Username: []byte("admin"),
-	//	Password: []byte("passs"),
-	//})
-	//
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
-
-	//token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDcwNzM2NTcsImlhdCI6MTc0NDQ4MTY1NywidXNlcm5hbWUiOiJkdW1teSJ9.FUOu-DtS1_azr8YJgpEdygKuSpOQKiPbZAilra3p8xI"
-
-	//logger.Log.Info(
-	//	"adding log pass",
-	//)
-	//_, err = client.AddSecret(ctx, &api.AddSecretRequest{
-	//	Key: []byte(fmt.Sprintf("%s-%s", "logpass", uuid.NewString())),
-	//	Secret: &api.Secret{
-	//		Secret: &api.Secret_LogPass{
-	//			LogPass: &api.LogPass{
-	//				Login:    "admin",
-	//				Password: "root",
-	//			},
-	//		},
-	//	},
-	//},
-	//)
-	//
-	//logger.Log.Info(
-	//	"adding simple text",
-	//)
-	//_, err = client.AddSecret(ctx, &api.AddSecretRequest{
-	//	Key: []byte(fmt.Sprintf("%s-%s", "text", uuid.NewString())),
-	//	Secret: &api.Secret{
-	//		Secret: &api.Secret_Text{
-	//			Text: &api.Text{
-	//				Data: "Hello World!",
-	//			},
-	//		},
-	//	},
-	//},
-	//)
-
-	if err != nil {
-		logger.Log.Error(
-			"error on adding secret",
-			zap.Error(err),
-		)
-	}
-
-	//key := []byte("text-769bfb1c-bd4d-4d24-ac2b-db7bd2f0f16c")
-	//
-	//getSecretResponse, err := client.GetSecret(ctx, &api.GetSecretRequest{
-	//	Key: key,
-	//})
-	//
-	//if err != nil {
-	//	logger.Log.Error(
-	//		"error getting secret",
-	//		zap.Error(err),
-	//	)
-	//	os.Exit(0)
-	//}
-	//
-	//fmt.Println("Secret meta:", getSecretResponse.SecretMeta)
-	//fmt.Println("Secret data:", getSecretResponse.Secret)
-
 	wg := &sync.WaitGroup{}
 	ui := tui.NewUI(client)
 
@@ -112,40 +45,6 @@ func main() {
 		ui.Run()
 		wg.Done()
 	}()
-
-	time.Sleep(3 * time.Second)
-	//ui.LoginPage()
-
-	//metadataStream, err := client.ListSecretsMetaStream(ctx, &api.ListSecretsMetaRequest{
-	//	Username: []byte("admin"),
-	//})
-	//wg.Add(1)
-	//go func() {
-	//	for {
-	//		resp, err := metadataStream.Recv()
-	//		if err == io.EOF {
-	//			return
-	//		}
-	//		if err != nil {
-	//			log.Fatalln("error when waiting messages from server")
-	//		}
-	//
-	//		items = nil
-	//		for _, sm := range resp.SecretsMeta {
-	//			items = append(items, &tui.SecretItem{
-	//				SecretMeta: sm,
-	//			})
-	//		}
-	//	}
-	//}()
-
-	//time.Sleep(time.Second * 3)
-	//
-	//items[0].(*tui.SecretItem).SecretMeta = &api.SecretMeta{
-	//	Key:  []byte("sdfsdf"),
-	//	Name: []byte("sdfsdf"),
-	//	Type: api.SecretType_TYPE_TEXT,
-	//}
 
 	wg.Wait()
 

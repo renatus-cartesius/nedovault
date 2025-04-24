@@ -26,7 +26,8 @@ var (
 	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#dddddd"})
 	//loginStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Align(lipgloss.Center).Padding(10, 2, 10, 2)
-	loginStyle = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Margin(1, 5).Padding(10, 2, 10, 2)
+	//loginStyle = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).Margin(1, 5).Padding(10, 0, 10, 0).Align(lipgloss.Center)
+	loginStyle = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("63")).AlignVertical(lipgloss.Center).AlignHorizontal(lipgloss.Center)
 	noStyle    = lipgloss.NewStyle()
 )
 
@@ -51,18 +52,19 @@ type loginPage struct {
 }
 
 type model struct {
-	sp             list.Model
-	selectedSecret *api.Secret
+	// Secret page view
+	sp list.Model
+	//Secret editor view
+	sv *SecretView
 
-	lp loginPage
-
-	client api.NedoVaultClient
-	token  string
-
-	username string
-
-	mx         *sync.Mutex
+	lp         loginPage
+	client     api.NedoVaultClient
+	token      string
+	username   string
+	tokench    chan string
 	isLoggedIn bool
+
+	mx *sync.Mutex
 }
 
 func (m model) Init() tea.Cmd {
@@ -103,6 +105,19 @@ func (m model) updateLoginPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
+				ctx = metadata.AppendToOutgoingContext(ctx, "token", res.Token)
+				resp, err := m.client.ListSecretsMeta(
+					ctx,
+					&emptypb.Empty{},
+				)
+
+				var secrets []list.Item
+				for _, sm := range resp.SecretsMeta {
+					secrets = append(secrets, &SecretItem{sm})
+				}
+
+				m.sp.SetItems(secrets)
+
 				m.lp.lastErr = nil
 				m.token = res.Token
 				m.username = username
@@ -110,23 +125,7 @@ func (m model) updateLoginPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lp.inputs[0].SetValue("")
 				m.lp.inputs[1].SetValue("")
 
-				ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
-				listSecretsMetaResponse, err := m.client.ListSecretsMeta(ctx, &emptypb.Empty{})
-				if err != nil {
-					logger.Log.Error(
-						"error on listing secrets",
-						zap.Error(err),
-					)
-				}
-
-				var secrets []list.Item
-				for _, sm := range listSecretsMetaResponse.SecretsMeta {
-					secrets = append(secrets, &SecretItem{sm})
-				}
-
-				m.mx.Lock()
-				m.sp.SetItems(secrets)
-				m.mx.Unlock()
+				m.tokench <- res.Token
 
 				m.isLoggedIn = true
 			}
@@ -183,6 +182,17 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+l":
 			m.isLoggedIn = !m.isLoggedIn
+		case "r":
+			item := m.sp.Items()[m.sp.GlobalIndex()].(*SecretItem)
+
+			ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
+			_, _ = m.client.DeleteSecret(ctx, &api.DeleteSecretRequest{
+				Key: item.SecretMeta.Key,
+			})
+		case "esc":
+			m.sv.Secret = nil
+			return m, nil
+
 		case "a":
 
 			ctx = metadata.AppendToOutgoingContext(ctx, "token", m.token)
@@ -206,19 +216,16 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Key: item.SecretMeta.Key,
 			})
 			if err != nil {
-				m.selectedSecret.Secret = nil
+				m.sv.Secret = nil
 				return m, nil
 			}
 
-			m.selectedSecret = getSecretResponse.Secret
+			m.sv.Update(getSecretResponse.Secret)
+			m.sv.Secret = getSecretResponse.Secret
 
 		}
 
-	case tea.WindowSizeMsg:
-		h, v := docStyle.GetFrameSize()
-		m.sp.SetSize(msg.Width-h, msg.Height-v)
 	}
-
 	var cmd tea.Cmd
 	m.sp, cmd = m.sp.Update(msg)
 	return m, cmd
@@ -227,6 +234,10 @@ func (m model) updateSecretsPage(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch mtype := msg.(type) {
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.sp.SetSize(mtype.Width-h, mtype.Height-v)
+		loginStyle = loginStyle.Width(mtype.Width - h).Height(mtype.Height - v)
 	case secretsUpdate:
 		m.sp.SetItems(mtype.secrets)
 		return m, nil
@@ -269,18 +280,16 @@ func (m model) View() string {
 		if m.username == "" {
 			m.sp.Title += "unauthorized"
 		} else {
-			m.sp.Title = "user: " + string(m.username)
+			m.sp.Title += "user: " + string(m.username)
 		}
 
-		m.mx.Lock()
-		s += docStyle.Render(m.sp.View())
-		m.mx.Unlock()
-
-		if m.selectedSecret != nil {
-			s += lipgloss.JoinVertical(lipgloss.Right, fmt.Sprintf("%s", m.selectedSecret.String()))
+		if m.sv.Secret == nil {
+			s += m.sp.View()
+		} else {
+			s += lipgloss.JoinHorizontal(lipgloss.Top, m.sp.View(), m.sv.View())
 		}
 
-		return s
+		return docStyle.Render(s)
 	}
 	//return docStyle.Render(m.sp.View())
 }
@@ -296,6 +305,11 @@ type secretsUpdate struct {
 func (u *UI) CheckUpdates(ctx context.Context, wg *sync.WaitGroup, p *tea.Program) {
 	//defer wg.Done()
 
+	// TODO: add dispatch goroutine for controlling checkupdates goroutines
+	token := <-u.m.tokench
+
+	ctx = metadata.AppendToOutgoingContext(ctx, "token", token)
+
 	stream, err := u.m.client.ListSecretsMetaStream(ctx, &emptypb.Empty{})
 	if err != nil {
 		panic(err)
@@ -308,6 +322,7 @@ func (u *UI) CheckUpdates(ctx context.Context, wg *sync.WaitGroup, p *tea.Progra
 		case <-ctx.Done():
 			return
 		default:
+
 			resp, err := stream.Recv()
 			if err == io.EOF {
 				return
@@ -365,14 +380,13 @@ func NewUI(client api.NedoVaultClient) *UI {
 
 	return &UI{
 		m: model{
-			sp: sp,
-			selectedSecret: &api.Secret{
-				Secret: nil,
-			},
+			sp:         sp,
+			sv:         NewSecretView(),
 			lp:         loginPage{inputs: loginInputs, current: 0},
 			mx:         &sync.Mutex{},
 			isLoggedIn: false,
 			client:     client,
+			tokench:    make(chan string, 1),
 		},
 	}
 }
@@ -397,10 +411,4 @@ func (u *UI) Run() {
 	}
 
 	//wg.Wait()
-}
-
-func (u *UI) LoginPage() {
-	u.m.mx.Lock()
-	u.m.isLoggedIn = false
-	u.m.mx.Unlock()
 }
