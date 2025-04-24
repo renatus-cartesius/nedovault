@@ -31,6 +31,31 @@ type BadgerStorage struct {
 	db *badger.DB
 }
 
+func (b *BadgerStorage) DeleteSecret(ctx context.Context, username []byte, in *api.DeleteSecretRequest) error {
+	dataPath := []byte(fmt.Sprintf("%s/%s", secretsDataPrefix(username), in.GetKey()))
+	metadataPath := []byte(fmt.Sprintf("%s/%s", secretsMetadataPrefix(username), in.GetKey()))
+
+	err := b.db.Update(func(txn *badger.Txn) error {
+		txn = b.db.NewTransaction(true)
+
+		if err := txn.Delete(dataPath); err != nil {
+			return err
+		}
+
+		if err := txn.Delete(metadataPath); err != nil {
+			return err
+		}
+
+		if err := txn.Commit(); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return err
+}
+
 // GetAuthMeta getting user`s auth metadata from underlying storage
 func (b *BadgerStorage) GetAuthMeta(ctx context.Context, username []byte) (*auth.Meta, error) {
 	authMetadataPath := authMetadataPrefix(username)

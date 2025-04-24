@@ -42,6 +42,10 @@ message AddSecretRequest {
   Secret secret = 4;
 }
 
+message DeleteSecretRequest {
+  bytes key = 1;
+}
+
 message ListSecretsMetaResponse {
   repeated SecretMeta secrets_meta = 1;
 }
@@ -68,6 +72,7 @@ message AuthResponse {
 service NedoVault {
   rpc Authorize(AuthRequest) returns (AuthResponse) {}
   rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
+  rpc DeleteSecret(DeleteSecretRequest) returns (google.protobuf.Empty) {}
   rpc ListSecretsMeta(google.protobuf.Empty) returns (ListSecretsMetaResponse) {}
   rpc ListSecretsMetaStream(google.protobuf.Empty) returns (stream ListSecretsMetaResponse) {}
   rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}

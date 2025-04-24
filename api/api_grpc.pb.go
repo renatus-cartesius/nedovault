@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	NedoVault_Authorize_FullMethodName             = "/api.NedoVault/Authorize"
 	NedoVault_AddSecret_FullMethodName             = "/api.NedoVault/AddSecret"
+	NedoVault_DeleteSecret_FullMethodName          = "/api.NedoVault/DeleteSecret"
 	NedoVault_ListSecretsMeta_FullMethodName       = "/api.NedoVault/ListSecretsMeta"
 	NedoVault_ListSecretsMetaStream_FullMethodName = "/api.NedoVault/ListSecretsMetaStream"
 	NedoVault_GetSecret_FullMethodName             = "/api.NedoVault/GetSecret"
@@ -33,6 +34,7 @@ const (
 type NedoVaultClient interface {
 	Authorize(ctx context.Context, in *AuthRequest, opts ...grpc.CallOption) (*AuthResponse, error)
 	AddSecret(ctx context.Context, in *AddSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListSecretsMeta(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListSecretsMetaResponse, error)
 	ListSecretsMetaStream(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListSecretsMetaResponse], error)
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
@@ -60,6 +62,16 @@ func (c *nedoVaultClient) AddSecret(ctx context.Context, in *AddSecretRequest, o
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, NedoVault_AddSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nedoVaultClient) DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, NedoVault_DeleteSecret_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +123,7 @@ func (c *nedoVaultClient) GetSecret(ctx context.Context, in *GetSecretRequest, o
 type NedoVaultServer interface {
 	Authorize(context.Context, *AuthRequest) (*AuthResponse, error)
 	AddSecret(context.Context, *AddSecretRequest) (*emptypb.Empty, error)
+	DeleteSecret(context.Context, *DeleteSecretRequest) (*emptypb.Empty, error)
 	ListSecretsMeta(context.Context, *emptypb.Empty) (*ListSecretsMetaResponse, error)
 	ListSecretsMetaStream(*emptypb.Empty, grpc.ServerStreamingServer[ListSecretsMetaResponse]) error
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
@@ -129,6 +142,9 @@ func (UnimplementedNedoVaultServer) Authorize(context.Context, *AuthRequest) (*A
 }
 func (UnimplementedNedoVaultServer) AddSecret(context.Context, *AddSecretRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddSecret not implemented")
+}
+func (UnimplementedNedoVaultServer) DeleteSecret(context.Context, *DeleteSecretRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteSecret not implemented")
 }
 func (UnimplementedNedoVaultServer) ListSecretsMeta(context.Context, *emptypb.Empty) (*ListSecretsMetaResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListSecretsMeta not implemented")
@@ -196,6 +212,24 @@ func _NedoVault_AddSecret_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NedoVault_DeleteSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NedoVaultServer).DeleteSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NedoVault_DeleteSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NedoVaultServer).DeleteSecret(ctx, req.(*DeleteSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NedoVault_ListSecretsMeta_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -257,6 +291,10 @@ var NedoVault_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddSecret",
 			Handler:    _NedoVault_AddSecret_Handler,
+		},
+		{
+			MethodName: "DeleteSecret",
+			Handler:    _NedoVault_DeleteSecret_Handler,
 		},
 		{
 			MethodName: "ListSecretsMeta",

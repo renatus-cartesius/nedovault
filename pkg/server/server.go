@@ -1,10 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/dgraph-io/badger/v4"
-	"github.com/google/uuid"
 	"github.com/renatus-cartesius/metricserv/pkg/logger"
 	"github.com/renatus-cartesius/nedovault/api"
 	"github.com/renatus-cartesius/nedovault/internal/auth"
@@ -23,6 +23,7 @@ var (
 
 type Storage interface {
 	AddSecret(ctx context.Context, username []byte, in *api.AddSecretRequest) error
+	DeleteSecret(ctx context.Context, username []byte, in *api.DeleteSecretRequest) error
 	GetSecret(ctx context.Context, username, key []byte) (*api.Secret, *api.SecretMeta, error)
 	ListSecretsMeta(ctx context.Context, username []byte) ([]*api.SecretMeta, error)
 }
@@ -32,12 +33,37 @@ type Auth interface {
 	ParseToken(ctx context.Context, token []byte) (*auth.Claims, error)
 }
 
+type session struct {
+	username []byte
+}
+
 type Server struct {
 	api.UnimplementedNedoVaultServer
 
 	smap    *sync.Map
 	storage Storage
 	auth    Auth
+}
+
+func (s *Server) DeleteSecret(ctx context.Context, in *api.DeleteSecretRequest) (*emptypb.Empty, error) {
+	username := ctx.Value(auth.Username("username")).([]byte)
+
+	logger.Log.Info(
+		"deleting secret",
+		zap.String("username", string(username)),
+	)
+
+	if err := s.storage.DeleteSecret(ctx, username, in); err != nil {
+		logger.Log.Error(
+			"error when deleting secret",
+			zap.Error(err),
+		)
+		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Key)
+	}
+
+	s.notifyMetadataStreams(username)
+
+	return &emptypb.Empty{}, nil
 }
 
 func NewServer(storage Storage, auth Auth) *Server {
@@ -77,16 +103,18 @@ func (s *Server) Authorize(ctx context.Context, in *api.AuthRequest) (*api.AuthR
 }
 
 func (s *Server) ListSecretsMetaStream(e *emptypb.Empty, g grpc.ServerStreamingServer[api.ListSecretsMetaResponse]) error {
-	//username := g.Context().Value(auth.Username("username")).([]byte)
-	username := []byte("d")
+	username := g.Context().Value(auth.Username("username")).([]byte)
 
-	streamUuid := uuid.NewString()
+	sess := &session{
+		username: username,
+	}
+
 	ch := make(chan any)
 	defer func() {
 		close(ch)
-		s.smap.Delete(streamUuid)
+		s.smap.Delete(sess)
 	}()
-	s.smap.Store(streamUuid, ch)
+	s.smap.Store(sess, ch)
 
 	ctx := g.Context()
 
@@ -165,20 +193,19 @@ func (s *Server) AddSecret(ctx context.Context, in *api.AddSecretRequest) (*empt
 
 	logger.Log.Info(
 		"adding secret",
+		zap.String("username", string(username)),
 	)
 
 	if err := s.storage.AddSecret(ctx, username, in); err != nil {
 		logger.Log.Error(
 			"error when adding secret",
+			zap.String("username", string(username)),
 			zap.Error(err),
 		)
 		return &emptypb.Empty{}, status.Errorf(codes.Internal, "pair %s already exists", in.Key)
 	}
 
-	s.smap.Range(func(key, value any) bool {
-		value.(chan any) <- struct{}{}
-		return true
-	})
+	s.notifyMetadataStreams(username)
 
 	return &emptypb.Empty{}, nil
 }
@@ -201,4 +228,15 @@ func (s *Server) ListSecretsMeta(ctx context.Context, e *emptypb.Empty) (*api.Li
 	}
 
 	return response, nil
+}
+
+func (s *Server) notifyMetadataStreams(username []byte) {
+	s.smap.Range(func(key, value any) bool {
+
+		if bytes.Equal(key.(*session).username, username) {
+			value.(chan any) <- struct{}{}
+		}
+
+		return true
+	})
 }
