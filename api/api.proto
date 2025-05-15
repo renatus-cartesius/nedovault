@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/renatus-cartesius/nedovault/api";
+
+enum SecretType {
+  TYPE_LOGPASS = 0;
+  TYPE_TEXT = 1;
+}
+
+message LogPass {
+  string login = 1;
+  string password = 2;
+}
+
+message Text {
+  string data = 1;
+}
+
+message Secret {
+  oneof secret {
+    LogPass log_pass = 1;
+    Text text = 2;
+  }
+}
+
+message SecretMeta {
+  bytes key = 1;
+  bytes name = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  SecretType type = 4;
+}
+
+message AddSecretRequest {
+  bytes key = 1;
+  bytes name = 2;
+  SecretType secret_type = 3;
+  Secret secret = 4;
+}
+
+message DeleteSecretRequest {
+  bytes key = 1;
+}
+
+message ListSecretsMetaResponse {
+  repeated SecretMeta secrets_meta = 1;
+}
+
+message GetSecretRequest {
+  bytes key = 1;
+}
+
+message GetSecretResponse {
+  Secret secret = 1;
+  SecretMeta secret_meta = 2;
+}
+
+// Using both for login and register request
+message AuthRequest {
+  bytes username = 1;
+  bytes password = 2;
+}
+
+message AuthResponse {
+  string token = 1;
+}
+
+service NedoVault {
+  rpc Authorize(AuthRequest) returns (AuthResponse) {}
+  rpc AddSecret(AddSecretRequest) returns (google.protobuf.Empty) {}
+  rpc DeleteSecret(DeleteSecretRequest) returns (google.protobuf.Empty) {}
+  rpc ListSecretsMeta(google.protobuf.Empty) returns (ListSecretsMetaResponse) {}
+  rpc ListSecretsMetaStream(google.protobuf.Empty) returns (stream ListSecretsMetaResponse) {}
+  rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}
+}
